@@ -1,0 +1,344 @@
+import pandas as pd 
+import matplotlib.pyplot as plt 
+import numpy as np 
+import seaborn as sns
+from mpl_toolkits.mplot3d import Axes3D
+from itertools import product
+from Pair_trading_strategy import PairstradingStrategy
+
+class Parameteroptimize :
+    def __init__(self, ticker1: str , ticker2: str):
+        self.ticker1=ticker1
+        self.ticker2=ticker2
+        
+     
+        self.result=[]
+
+    def grid_search(
+            self,
+            train_start:str,
+            train_end: str,
+            entry_range: list=[1.1,1.75,2.0],
+            exit_range:list=[0.3,0.5,0.7],
+            stop_loss_range:list=[2.9,3.2,4.0]
+            
+            
+    ):
+        print(f"{'='*60}")
+        print(f" GRID Optimization Parameter")
+        print(f"{'='*60}")
+
+        print(f" le période d'entraînement : {train_start} à {train_end}")
+        total_combinaisons=len(entry_range)*len(exit_range)*len(stop_loss_range)
+        print(f"le nbre de combinaisons à tester : {total_combinaisons}")
+
+        self.results=[]
+        counter=0
+
+        for entry, exit_thresh,stop in product(entry_range, exit_range,stop_loss_range) :
+            counter+=1
+            print(f" Test {counter}/{total_combinaisons} :entry {entry}, exit{exit_thresh}, stop_loss {stop}")
+             
+            try :
+                strategy=PairstradingStrategy(self.ticker1,self.ticker2, train_start, train_end)
+
+                strategy.download_data()
+                
+                strategy.cointegration_test()
+                strategy.apply_kalman_filter()
+                window=strategy.calculate_spread()
+                strategy.calculate_zscore(window)
+                strategy.generate_signals_ml(entry, exit_thresh, stop)
+                metrics=strategy.backtest_strategy()
+
+                self.results.append({
+                    'entry_threshold': entry,
+                    'exit_threshold': exit_thresh,
+                    'stop_loss':stop, 
+                    
+                    'Sharpe_Ratio':metrics["Sharpe_Ratio"],
+                    'Calmar_Ratio': metrics["Calmar_Ratio"],
+                    'Win_Rate':metrics["Win_Rate"],
+                    'Sortino_Ratio':metrics["Sortino_Ratio"],
+                    'Max_Drawdown': metrics["Max_Drawdown"],
+                    'Annual_Return':metrics["Annual_Return"],
+                    'Total_Return':metrics["Total_Return"],
+                    'Profit_Factor':metrics["Profit_Factor"]
+
+                })
+                print(f" Sharpe ratio : {metrics["Sharpe_Ratio"]:.3f}")
+
+            except Exception as e :
+                print(f"erreur {str(e)}")
+                continue
+        
+        self.df_results=pd.DataFrame(self.results)
+
+        print(f" Optimisation determinée : {len(self.results)} resultats validées")
+
+        return self.df_results
+    
+
+    def get_best_parametres(self, metric: str ='Sharpe_Ratio'):
+
+        if self.df_results.empty :
+             print(" Pas de résultats disponibles")
+             return None
+        
+        best_idx=self.df_results[metric].idxmax()
+        best_params=self.df_results.loc[best_idx]
+        print(f"{'='*60}")
+        print(f" Meilleurs paramètres (selon {metric.upper()})")
+        print(f"{'='*60}")
+        
+        print(f" Entry threshold :{best_params["entry_threshold"]}")
+        print(f"Exit threshold : {best_params["exit_threshold"]}")
+        print(f" Stop_loss : {best_params["stop_loss"]}")
+     
+
+        print(f"Performance ")
+        print(f"Sharpe ratio : {best_params["Sharpe_Ratio"]:.5f}")
+        print(f"Calmar ratio : {best_params["Calmar_Ratio"]:.5f}")
+        print(f"Sortino ratio : {best_params["Sortino_Ratio"]:.5f}")
+        print(f"Win rate : {best_params["Win_Rate"]:.5f}")
+        print(f"Max drawdown : {best_params["Max_Drawdown"]:.5f}")
+
+        return best_params
+    
+
+    def walk_forward_analysis(
+            self,
+            full_start: str,
+            full_end:str,
+            train_period_days: int=252,
+            test_period_days: int=63
+           
+    ):
+        print(f"{'='*60}")
+        print(f" Walk forward analysis")
+        print(f"{'='*60}")
+        print(f" Période totale : {full_start} à {full_end}")
+        print(f" train : {train_period_days}"
+              f" test : {test_period_days}")
+        
+        strategy_temp=PairstradingStrategy(self.ticker1,self.ticker2, full_start, full_end)
+        strategy_temp.download_data()
+        dates=strategy_temp.data_close.index
+        wf_results=[]
+        window_start=0
+        window_number=0
+        while (window_start+train_period_days+test_period_days) <= len(dates):
+            window_number+=1
+            train_start_date= dates[window_start]
+            train_end_date=dates[window_start+train_period_days-1]
+            test_start_date=dates[window_start+train_period_days]
+            test_end_date=dates[min(window_start+train_period_days+test_period_days-1, len (dates)-1)]
+            print(f" window: {len(wf_results)+1}")
+            print(f"train : {train_start_date.date()} à {train_end_date.date()}")
+            print(f"test : {test_start_date.date()} à {test_end_date.date()}")
+
+
+            print(f" Optimization...")
+            train_result=self.grid_search(
+                train_start_date.strftime('%Y-%m-%d'),
+                train_end_date.strftime('%Y-%m-%d'),
+                entry_range=[1.1,1.5,2],
+                exit_range=[0.5,0.7,0.9],
+                stop_loss_range=[3,3.5,4]
+             
+            )
+            best_train=train_result.loc[train_result['Sharpe_Ratio'].idxmax()]
+            print(f"best Sharpe (train ): {best_train['Sharpe_Ratio']:.4f}")
+
+
+            print(f"Validation sur test period")
+            strategy_test=PairstradingStrategy(
+                self.ticker1,
+                self.ticker2,
+                test_start_date.strftime('%Y-%m-%d'),
+                test_end_date.strftime('%Y-%m-%d')
+            )
+
+            try : 
+                            strategy_test.download_data()
+                       
+                            strategy_test.cointegration_test()
+                            strategy_test.apply_kalman_filter()
+                            window=strategy_test.calculate_spread()
+                            strategy_test.calculate_zscore(window)
+                            strategy_test.generate_signals_ml(
+                            best_train['entry_threshold'],
+                            best_train['exit_threshold'],
+                            best_train['stop_loss']
+
+                            )
+
+                            test_metrics=strategy_test.backtest_strategy()
+                            print(f" test Sharpe {test_metrics['Sharpe_Ratio']:.4f}")
+                            wf_results.append ({
+                                    'train_start': train_start_date,
+                                    'train_end':train_end_date,
+                                    'test_start': test_start_date,
+                                    'test_end': test_end_date,
+                                    'Train_Sharpe':best_train['Sharpe_Ratio'],
+                                    'Test_Sharpe':test_metrics['Sharpe_Ratio'],
+                                    'Test_Sortino':test_metrics['Sortino_Ratio'],
+                                    'Test_Calmar':test_metrics['Calmar_Ratio'],
+                                    'Test_maxDD':test_metrics['Max_Drawdown'],
+                                    'Best_entry': best_train['entry_threshold'],
+                                    'Best_exit': best_train['exit_threshold'],
+                                    'Best_stoploss': best_train['stop_loss']
+                                 
+                                })
+            except Exception as e :
+                 print(f" erreur : {str(e)}")
+                 
+            window_start+=test_period_days
+            if window_number > 27 : 
+                 print("Limite de 30 fen^tres est atteinte ")
+                 break
+
+        self.wf_results=pd.DataFrame(wf_results)
+        print(f"{'='*60}")
+        print(f" Walk forward results")
+        print(f"{'='*60}")
+        print(f" le nombre de fenêtres :{len(self.wf_results)}")
+        print(f" test sharpe moyen : {self.wf_results["Test_Sharpe"].mean():.4f}")
+        print(f" test sharpe median : {self.wf_results["Test_Sharpe"].median():.4f}")
+        print(f" test Max DD moyen : {self.wf_results["Test_maxDD"].mean():.4f}")
+                
+        print(f"{'='*60}")
+        
+        
+    
+
+        # summary
+        summary=pd.DataFrame({
+            'Fenêtre ': range(1, len(wf_results)+1),
+            'Train sharpe': self.wf_results['Train_Sharpe'].round(3),
+            'Test_sharpe': self.wf_results['Test_Sharpe'].round(3),
+            'Degradation %':((self.wf_results['Train_Sharpe']-self.wf_results['Test_Sharpe'])*100/self.wf_results['Train_Sharpe'].abs()).round(1),
+            'Max DD': self.wf_results['Test_maxDD'].round(4),
+            'Entry': self.wf_results['Best_entry'],
+            'Exit': self.wf_results['Best_exit']
+        })
+
+        print(f"{summary.to_string(index=False)}")
+        print(f" Ratio Test/ Train moyen : { (self.wf_results['Test_Sharpe']/self.wf_results['Train_Sharpe']).mean():.2f}")
+        return self.wf_results
+
+    def plot_optimize_surface(self):
+         
+         if self.df_results.empty :
+              print("Pad de résultats à visualiser")
+              return
+         fig = plt.figure(figsize=(16,12))
+
+         # Heatmap sharpe (entry vs exit )
+         ax1=plt.subplot(2,2,1)
+         pivot_sharpe=self.df_results.pivot_table(
+              values='Sharpe_Ratio',
+              index='entry_threshold',
+              columns='exit_threshold',
+              aggfunc='mean'
+         )
+         sns.heatmap(pivot_sharpe, annot=True,fmt='.3f', cmap='RdYlGn', ax=ax1)
+         ax1.set_title('Sharpe ratio(Entry vs Exit)', fontweight='bold')
+
+         # Heatmap Maw drawdown
+         ax2=plt.subplot(2,2,2)
+         pivot_dd=self.df_results.pivot_table(
+              values='Max_Drawdown',
+              index='entry_threshold',
+              columns='stop_loss',
+              aggfunc='mean'
+         )
+         sns.heatmap(pivot_dd, annot=True, fmt=".2%", cmap="RdYlGn_r", ax=ax2)
+
+
+         # Surface 3D sharpe :
+         ax3=plt.subplot(2,2,3,  projection="3d")
+         x=self.df_results['entry_threshold']
+         y=self.df_results['exit_threshold']
+         z=self.df_results['Sharpe_Ratio']
+
+         ax3.scatter(x, y, z, c=z, cmap="viridis", s=100)
+         ax3.set_xlabel("Entry threshold")
+         ax3.set_ylabel("Exit_threshold")
+         ax3.set_zlabel("Sharpe_Ratio")
+         ax3.set_title(" Performance 3D", fontweight='bold')
+
+         # scatter sharpe avec max drawdown :
+         ax4=plt.subplot(2,2,4)
+         scatter=ax4.scatter(
+              self.df_results['Max_Drawdown'],
+              self.df_results['Sharpe_Ratio'],
+              c=self.df_results['entry_threshold'],
+              s=100,
+              cmap="coolwarm",
+              alpha=0.6
+         )
+
+         ax4.set_xlabel("Max Drawdown")
+         ax4.set_ylabel('Sharpe')
+         ax4.set_title('Risk vs Return', fontweight='bold')
+         ax4.axhline(0, color='black', linestyle='--', alpha=0.3)
+
+         plt.colorbar( scatter,ax=ax4, label='Entry threshold')
+         ax4.grid(alpha=0.3)
+
+         plt.tight_layout()
+         plt.show()
+    
+    def plot_walk_forward_results(self) :
+         fig, axes=plt.subplots(2,2,figsize=(16,10))
+
+
+         # Sharpe train vs test :
+         ax1=axes[0,0]
+         x=range(len(self.wf_results))
+         ax1.plot(x,self.wf_results['Train_Sharpe'], marker='o' , label='Train', linewidth=2)
+         ax1.plot(x,self.wf_results['Test_Sharpe'], marker='s', label='Test',linewidth=2)
+         ax1.set_xlabel("window")
+         ax1.set_ylabel("Sharpe ratio")
+         ax1.set_title('sharpe : Train vs Test', fontweight='bold')
+         ax1.legend()
+         ax1.grid(alpha=0.3)
+         ax1.axhline(0, color='red',linestyle='--', alpha=0.5)
+
+
+         # MAX Drawdown test : 
+         ax2=axes[0,1]
+         ax2.bar(x, self.wf_results['Test_maxDD'], color='red' , alpha=0.6)
+         ax2.set_xlabel('window')
+         ax2.set_ylabel('Max Drawdown')
+         ax2.set_title('Max Drawdown par fenêtre ', fontweight='bold')
+         ax2.grid(alpha=0.3, axis='y')
+
+         # Distribution Sharpe test : 
+         ax3=axes[1,0]
+         ax3.hist(self.wf_results['Test_Sharpe'], bins=15, edgecolor='black', alpha=0.7)
+         ax3.axvline(self.wf_results['Test_Sharpe'].mean(), color='red', linestyle='--', linewidth=2, label=f"Moyenne :{self.wf_results['Test_Sharpe'].mean():.3f}")
+         ax3.set_xlabel('sharpe Ratio (test)')
+         ax3.set_ylabel('Fréquence')
+         ax3.set_title('Distribution sharpe (out of sample )', fontweight='bold')
+         ax3.legend()
+         ax3.grid(alpha=0.3, axis='y')
+
+
+         # paramétres optimaux par fenêtre 
+         ax4=axes[1,1]
+         ax4.plot(x, self.wf_results['Best_entry'], marker ='o', label='Entry', linewidth=2)
+         ax4.plot(x , self.wf_results['Best_exit'], marker='s', label='Exit', linewidth=2)
+         ax4.set_xlabel('window')
+         ax4.set_ylabel('Threshold')
+         ax4.set_title('Evolution des paramètres Optimaux', fontweight='bold')
+
+         ax4.legend()
+         ax4.grid(alpha=0.3)
+
+         plt.tight_layout()
+         plt.show()
+
+
+    
