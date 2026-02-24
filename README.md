@@ -48,7 +48,7 @@ Note : la période a été réduite de 1996–2025 à 2014–2026 pour une raiso
 **Observation** : exit=0.9 domine systématiquement. entry=1.1 génère plus de trades avec un meilleur Sharpe mais un drawdown légèrement plus élevé.
 
 <img width="1251" height="952" alt="image" src="https://github.com/user-attachments/assets/94b11763-8dd7-4bc1-8d8d-56e971fa94d1" />
-<img width="1251" height="952" alt="image" src="https://github.com/user-attachments/assets/94b11763-8dd7-4bc1-8d8d-56e971fa94d1" />
+
 
 
 ---
@@ -72,7 +72,7 @@ Note : la période a été réduite de 1996–2025 à 2014–2026 pour une raiso
 La fenêtre 4 (période incluant 2023+) s'effondre à -1.635. Cohérent avec la rupture de cointégration post-2022.
 
 <img width="1395" height="868" alt="image" src="https://github.com/user-attachments/assets/328f3899-b4f7-486f-a8df-835435a3e799" />
-<img width="1395" height="868" alt="image" src="https://github.com/user-attachments/assets/328f3899-b4f7-486f-a8df-835435a3e799" />
+
 
 
 ---
@@ -122,7 +122,7 @@ Paramètres : entry=1.1, exit=0.9, stop=4.0
 Malgré la perte de cointégration post-2022, le spread reste mean-révertant. Sharpe 0.73 en out-of-sample — mais fragile, à monitorer.
 
 ![WhatsApp Image 2026-02-24 at 12 40 26](https://github.com/user-attachments/assets/d9ce4473-fb7c-4c98-8d8c-e7ebc5a7dd1b)
-![WhatsApp Image 2026-02-24 at 12 40 26](https://github.com/user-attachments/assets/d9ce4473-fb7c-4c98-8d8c-e7ebc5a7dd1b)
+
 
 
 ---
